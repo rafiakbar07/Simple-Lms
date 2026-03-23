@@ -1,14 +1,18 @@
-version: '3.9'
+version: "3.9"
 
 services:
   db:
     image: postgres:15
     container_name: postgres_db
     restart: always
-    env_file:
-      - .env
+    environment:
+      POSTGRES_DB: simple_lms
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
   web:
     build: .
@@ -20,8 +24,12 @@ services:
       - "8000:8000"
     depends_on:
       - db
-    env_file:
-      - .env
+    environment:
+      DB_NAME: simple_lms
+      DB_USER: postgres
+      DB_PASSWORD: password123
+      DB_HOST: db
+      DB_PORT: 5432
 
 volumes:
   postgres_data:
