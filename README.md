@@ -1,25 +1,40 @@
-🚀 Cara Menjalankan Project
+# Simple LMS (Django + Docker)
+
+## 🚀 Cara Menjalankan Project
+
 1. Clone repository
+
+```bash
 git clone <repo-url>
 cd simple-lms
+```
 
 2. Jalankan Docker Compose
+
+```bash
 docker-compose up --build
+```
 
 3. Akses di browser
-http://localhost:8000
+   http://localhost:8000
 
-⚙️ Environment Variables
+---
 
-Project ini menggunakan konfigurasi berikut:
+## ⚙️ Environment Variables
 
-POSTGRES_DB : nama database
-POSTGRES_USER : username database
-POSTGRES_PASSWORD : password database
-DB_HOST : host database (postgres_db)
-DB_PORT : port database (5432)
+Project ini menggunakan konfigurasi berikut (di docker-compose.yml):
 
-📁 Project Structure
+* POSTGRES_DB : nama database
+* POSTGRES_USER : username database
+* POSTGRES_PASSWORD : password database
+* DB_HOST : host database (postgres_db)
+* DB_PORT : port database (5432)
+
+---
+
+## 📁 Project Structure
+
+```
 simple-lms/
 ├── docker-compose.yml
 ├── Dockerfile
@@ -31,3 +46,4 @@ simple-lms/
 │   ├── urls.py
 │   └── wsgi.py
 └── README.md
+```
