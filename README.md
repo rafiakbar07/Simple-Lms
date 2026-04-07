@@ -85,6 +85,21 @@ completed
 completed_at
 
 📁 Project Structure
+
+
+
+## ⚙️ Environment Variables
+
+Project ini menggunakan konfigurasi berikut (di docker-compose.yml):
+
+* POSTGRES_DB : nama database
+* POSTGRES_USER : username database
+* POSTGRES_PASSWORD : password database
+* DB_HOST : host database (postgres_db)
+* DB_PORT : port database (5432)
+
+## 📁 Project Structure
+
 simple-lms/
 ├── config/
 │   ├── __init__.py
@@ -103,6 +118,9 @@ simple-lms/
 ├── .env.example
 ├── docker-compose.yml
 ├── Dockerfile
+├── .gitignore
 ├── manage.py
 ├── README.md
 └── requirements.txt
+
+
