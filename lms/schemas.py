@@ -1,6 +1,38 @@
 from ninja import Schema
+from pydantic import EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime
+
+class RegisterSchema(Schema):
+    username: str
+    email: EmailStr
+    password: str
+    role: str = "student"
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v):
+        if v not in ("admin", "instructor", "student"):
+            raise ValueError("Role must be admin, instructor, or student")
+        return v
+
+class LoginSchema(Schema):
+    username: str
+    password: str
+
+class TokenSchema(Schema):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+class RefreshSchema(Schema):
+    refresh_token: str
+
+class UpdateProfileSchema(Schema):
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    password: Optional[str] = None
 
 
 class CategorySchema(Schema):
