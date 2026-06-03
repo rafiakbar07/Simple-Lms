@@ -285,6 +285,3 @@ simple-lms/
 └── requirements.txt
 ```
 
----
-
-*Project ini dibuat untuk mata kuliah Pemrograman Sisi Server*
