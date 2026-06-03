@@ -1,13 +1,17 @@
 from ninja import Router, Query
 from ninja.errors import HttpError
 from typing import Optional
+from django.core.cache import cache
 from lms.models import Course, Category, User
 from lms.schemas import (
     CourseCreateSchema, CourseUpdateSchema,
     CourseDetailSchema, PaginatedCoursesSchema, MessageSchema
 )
+from lms.rate_limit import rate_limit
 
 router = Router(tags=["Courses"])
+
+CACHE_TTL = 60 * 5  # 5 menit
 
 
 def serialize_detail(course):
@@ -40,7 +44,15 @@ def list_courses(
     category_id: Optional[int] = None,
     search: Optional[str] = None,
 ):
-    """List all courses dengan pagination dan filter."""
+    # Rate limiting
+    rate_limit(request.META.get("REMOTE_ADDR", "unknown"))
+
+    # Cache
+    cache_key = f"courses:list:{page}:{page_size}:{category_id}:{search}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
     qs = Course.objects.for_listing()
     if category_id:
         qs = qs.filter(category_id=category_id)
@@ -48,7 +60,8 @@ def list_courses(
         qs = qs.filter(title__icontains=search)
     total = qs.count()
     courses = qs[(page - 1) * page_size: page * page_size]
-    return {
+
+    result = {
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -73,10 +86,21 @@ def list_courses(
         ],
     }
 
+    cache.set(cache_key, result, CACHE_TTL)
+    return result
+
 
 @router.get("/{course_id}", response=CourseDetailSchema)
 def get_course(request, course_id: int):
-    """Get detail sebuah course."""
+    # Rate limiting
+    rate_limit(request.META.get("REMOTE_ADDR", "unknown"))
+
+    # Cache
+    cache_key = f"courses:detail:{course_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
     try:
         course = (
             Course.objects
@@ -86,12 +110,14 @@ def get_course(request, course_id: int):
         )
     except Course.DoesNotExist:
         raise HttpError(404, "Course not found")
-    return serialize_detail(course)
+
+    result = serialize_detail(course)
+    cache.set(cache_key, result, CACHE_TTL)
+    return result
 
 
 @router.post("", response={201: CourseDetailSchema})
 def create_course(request, payload: CourseCreateSchema):
-    """Buat course baru."""
     try:
         instructor = User.objects.get(id=payload.instructor_id)
     except User.DoesNotExist:
@@ -100,11 +126,16 @@ def create_course(request, payload: CourseCreateSchema):
         category = Category.objects.get(id=payload.category_id)
     except Category.DoesNotExist:
         raise HttpError(404, "Category not found")
+
     course = Course.objects.create(
         title=payload.title,
         instructor=instructor,
         category=category,
     )
+
+    # Invalidate cache list
+    cache.delete_pattern("courses:list:*")
+
     course = (
         Course.objects
         .select_related("instructor", "category")
@@ -116,7 +147,6 @@ def create_course(request, payload: CourseCreateSchema):
 
 @router.patch("/{course_id}", response=CourseDetailSchema)
 def update_course(request, course_id: int, payload: CourseUpdateSchema):
-    """Update course."""
     try:
         course = (
             Course.objects
@@ -126,6 +156,7 @@ def update_course(request, course_id: int, payload: CourseUpdateSchema):
         )
     except Course.DoesNotExist:
         raise HttpError(404, "Course not found")
+
     if payload.title is not None:
         course.title = payload.title
     if payload.category_id is not None:
@@ -134,16 +165,26 @@ def update_course(request, course_id: int, payload: CourseUpdateSchema):
         except Category.DoesNotExist:
             raise HttpError(404, "Category not found")
     course.save()
+
+    # Invalidate cache
+    cache.delete(f"courses:detail:{course_id}")
+    cache.delete_pattern("courses:list:*")
+
     return serialize_detail(course)
 
 
 @router.delete("/{course_id}", response=MessageSchema)
 def delete_course(request, course_id: int):
-    """Hapus course."""
     try:
         course = Course.objects.get(id=course_id)
     except Course.DoesNotExist:
         raise HttpError(404, "Course not found")
+
     title = course.title
     course.delete()
+
+    # Invalidate cache
+    cache.delete(f"courses:detail:{course_id}")
+    cache.delete_pattern("courses:list:*")
+
     return {"message": f"Course '{title}' deleted successfully"}

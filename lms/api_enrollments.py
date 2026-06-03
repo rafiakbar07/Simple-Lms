@@ -2,10 +2,9 @@ from ninja import Router
 from ninja.errors import HttpError
 from typing import List
 from lms.models import Course, Enrollment, Progress, Lesson, User
-from lms.schemas import (
-    EnrollSchema, ProgressUpdateSchema,
-    EnrolledCourseSchema, MessageSchema
-)
+from lms.schemas import EnrollSchema, ProgressUpdateSchema, EnrolledCourseSchema
+from lms.tasks import send_enrollment_email, generate_certificate
+from lms.mongo import log_activity, log_learning
 
 router = Router(tags=["Enrollments"])
 
@@ -21,9 +20,27 @@ def enroll_course(request, payload: EnrollSchema):
         course = Course.objects.get(id=payload.course_id)
     except Course.DoesNotExist:
         raise HttpError(404, "Course not found")
+
     if Enrollment.objects.filter(student=student, course=course).exists():
         raise HttpError(400, "Already enrolled in this course")
+
     enrollment = Enrollment.objects.create(student=student, course=course)
+
+    # Celery: kirim email async
+    send_enrollment_email.delay(
+        student.email,
+        student.username,
+        course.title,
+    )
+
+    # MongoDB: log activity
+    log_activity(
+        user_id=student.id,
+        action="enroll",
+        course_name=course.title,
+        metadata={"course_id": course.id}
+    )
+
     return 201, {
         "message": f"Successfully enrolled in '{course.title}'",
         "enrollment_id": enrollment.id,
@@ -37,6 +54,12 @@ def my_courses(request, student_id: int):
         student = User.objects.get(id=student_id)
     except User.DoesNotExist:
         raise HttpError(404, "Student not found")
+
+    # MongoDB: log activity
+    log_activity(
+        user_id=student.id,
+        action="view_my_courses",
+    )
 
     enrollments = Enrollment.objects.for_student_dashboard().filter(student=student)
     result = []
@@ -93,19 +116,37 @@ def mark_progress(request, enrollment_id: int, payload: ProgressUpdateSchema):
         raise HttpError(404, "Student not found")
 
     progress, created = Progress.objects.get_or_create(
-        student=student,
-        lesson=lesson,
-        defaults={"completed": payload.completed},
+        student=student, lesson=lesson,
+        defaults={"completed": payload.completed}
     )
     if not created:
         progress.completed = payload.completed
         progress.save()
+
+    # MongoDB: log learning analytics
+    log_learning(student.id, enrollment.course.id, lesson.id, payload.completed)
+
+    # MongoDB: log activity
+    log_activity(
+        user_id=student.id,
+        action="view_course",
+        course_name=enrollment.course.title,
+        metadata={"lesson_id": lesson.id, "completed": payload.completed}
+    )
 
     total = Lesson.objects.filter(course=enrollment.course).count()
     completed = Progress.objects.filter(
         student=student, lesson__course=enrollment.course, completed=True
     ).count()
     pct = round((completed / total * 100) if total > 0 else 0, 1)
+
+    # Celery: generate certificate kalau sudah 100%
+    if pct == 100.0:
+        generate_certificate.delay(
+            student.username,
+            enrollment.course.title,
+            enrollment.id,
+        )
 
     return {
         "message": "Progress updated",
